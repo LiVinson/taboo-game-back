@@ -3,10 +3,10 @@ const csvParser = require('csv-parser')
 const fs = require('fs')
 const path = require('path')
 const inquirer = require('inquirer')
+//---------Firebase configuration--------------
 const firebase = require('firebase/app')
 require('firebase/firestore')
 require('firebase/analytics')
-
 const fbConfig = require('./config/fbConfig')
 // Initialize Firebase
 firebase.initializeApp(fbConfig)
@@ -14,6 +14,9 @@ firebase.initializeApp(fbConfig)
 //Initialize firestore
 firebase.firestore()
 
+//-------------Globals -----------------
+
+const deckDirectory = path.join(__dirname, 'deck')
 const mainMenu = () => {
 	inquirer
 		.prompt([
@@ -105,7 +108,54 @@ const mainMenu = () => {
 }
 
 const importCardsFromFile = () => {
-	console.log('import cards from file')
+	console.log('File must be a csv and saved in the deck folder.')
+	fs.readdir(deckDirectory, (err, files) => {
+		if (err) {
+			console.log('There was an error reading the directory')
+			logError(err.message)
+		}
+
+		const fileChoices = files.concat({ name: 'File not listed', value: 'notFound' })
+		console.log(fileChoices)
+		inquirer
+			.prompt([
+				{
+					name: 'fileName',
+					type: 'rawlist',
+					message: 'Which file would you like to import?',
+					choices: fileChoices,
+				},
+			])
+			.then((answers) => {
+                console.log(answers)
+				if (answers.fileName === 'notFound') {
+					console.log('Add the csv file to import to the deck folder and try again.')
+					return
+				}
+				console.log('importing ', answers.fileName)
+			})
+			.catch((error) => {
+				console.log(error.message)
+			})
+	})
+
+	/*
+    
+    Name of file w/ extenstion
+    Check that file exists with valid extension
+    Log: File exists. Reading contents
+    //Reading complete.
+    //Number of valid and invalid cards
+    //Review list of valid or invalid before import?
+    //Import cards
+    //Success message. New number of cards.
+    //Update 'actionsPerformed' array?
+    //What would you like to do
+    //Quit
+    //Log actions performed 
+    
+
+*/
 }
 
 const updateExistingCard = () => {
@@ -132,4 +182,10 @@ const quit = () => {
 	console.log('quit')
 }
 
+const logError = (message, code = 1) => {
+	console.log('')
+	console.log(message)
+	console.log('')
+	process.exit(code)
+}
 mainMenu(process.env.NODE_ENV)
