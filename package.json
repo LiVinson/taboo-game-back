@@ -4,7 +4,9 @@
   "description": "The scripts to import, change, and remove cards from the test and production firestore database for the taboo game.",
   "main": "index.js",
   "scripts": {
-    "test": "yarn test"
+    "test": "yarn test",
+    "dev-update-deck": "env NODE_ENV=development node ./index.js",
+    "prod-update-deck": "env NODE_ENV=production node ./index.js"
   },
   "repository": {
     "type": "git",
@@ -28,6 +30,7 @@
     "csv-parser": "^2.3.3",
     "custom-env": "^2.0.1",
     "dotenv": "^8.2.0",
-    "firebase": "^7.21.0"
+    "firebase": "^7.21.0",
+    "inquirer": "^7.3.3"
   }
 }

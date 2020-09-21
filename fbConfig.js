@@ -1,4 +1,5 @@
 
+
 const fbConfig = {
 	apiKey: process.env.API_KEY,
 	authDomain: process.env.AUTH_DOMAIN,
@@ -9,6 +10,5 @@ const fbConfig = {
 	appId: process.env.APP_ID,
 	measurementId: process.env.MEASUREMENT_ID,
 }
-
 
 module.exports = fbConfig 
