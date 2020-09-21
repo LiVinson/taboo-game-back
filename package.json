@@ -1,0 +1,36 @@
+{
+  "name": "taboo-game-back",
+  "version": "1.0.0",
+  "description": "The scripts to import, change, and remove cards from the test and production firestore database for the taboo game.",
+  "main": "index.js",
+  "scripts": {
+    "test": "yarn test",
+    "dev-update-deck": "env NODE_ENV=development node ./index.js",
+    "prod-update-deck": "env NODE_ENV=production node ./index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LiVinson/taboo-game-back.git"
+  },
+  "keywords": [
+    "taboo",
+    "deck",
+    "backend",
+    "javascript",
+    "firestore",
+    "node"
+  ],
+  "author": "Lisa Vinson",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/LiVinson/taboo-game-back/issues"
+  },
+  "homepage": "https://github.com/LiVinson/taboo-game-back#readme",
+  "dependencies": {
+    "csv-parser": "^2.3.3",
+    "custom-env": "^2.0.1",
+    "dotenv": "^8.2.0",
+    "firebase": "^7.21.0",
+    "inquirer": "^7.3.3"
+  }
+}
