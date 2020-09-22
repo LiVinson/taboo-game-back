@@ -73,8 +73,6 @@ const mainMenu = () => {
 			},
 		])
 		.then((response) => {
-			console.log('success')
-			console.log(response)
 			switch (response.menuAction) {
 				case 'newFile':
 					importCardsFromFile()
@@ -108,7 +106,6 @@ const mainMenu = () => {
 }
 
 const importCardsFromFile = () => {
-	console.log('File must be a csv and saved in the deck folder.')
 	fs.readdir(deckDirectory, (err, files) => {
 		if (err) {
 			console.log('There was an error reading the directory')
@@ -116,23 +113,20 @@ const importCardsFromFile = () => {
 		}
 
 		const fileChoices = files.concat({ name: 'File not listed', value: 'notFound' })
-		console.log(fileChoices)
 		inquirer
 			.prompt([
 				{
 					name: 'fileName',
 					type: 'rawlist',
-					message: 'Which file would you like to import?',
+					message: 'Which file would you like to use to add cards to the deck?',
 					choices: fileChoices,
 				},
 			])
 			.then((answers) => {
-				console.log(answers)
 				if (answers.fileName === 'notFound') {
 					console.log('Add the csv file to import to the deck folder and try again.')
 					return
 				}
-				console.log('importing ', answers.fileName)
 				readDeckFile(answers.fileName)
 			})
 			.catch((error) => {
@@ -141,6 +135,7 @@ const importCardsFromFile = () => {
 	})
 
 	const readDeckFile = (fileName) => {
+		console.log(`\nReading ${fileName}...\n`)
 		const validCards = []
 		const invalidCards = []
 		//Create a file stream to read file line by line
@@ -150,8 +145,8 @@ const importCardsFromFile = () => {
 			.on('error', (err) => {
 				console.log(err.message)
 				process.exit(1)
-            })
-            //Reads each line and imports as an object with keys as the row 1 column headers.
+			})
+			//Reads each line and imports as an object with keys as the row 1 column headers.
 			.pipe(csvParser())
 			.on('data', (row) => {
 				//Checks that there are correct number of properties for row (6). If not, pushes to invalid array
@@ -161,48 +156,94 @@ const importCardsFromFile = () => {
 					validCards.push(row)
 				}
 			})
-			.on('end', () => {
-				console.log("finished reading files. Valid: ")
-				console.log(validCards.length)
+			.on('end', async () => {
+				console.log(`Finished reading ${fileName}`)
 
-				console.log('invalid: ')
-                console.log(invalidCards)
-
-                //Do you want to proceed and upload the {number} valid cards or quit the program?
-                inquirer
-                .prompt([
-                    {
-                        name: 'continueUpload',
-                        type: 'confirm',
-                        message: 'Do you want to proceed and upload the {number} valid cards?',
-                        default: false
-                    },
-                ])
-                .then((answers) => {
-                    console.log(answers)
-                    if (!answers.continueUpload) {
-                        quit()                     
-                        return
-                    }
-                    console.log('continuing with valid cards')
-         
-                })
-                .catch((error) => {
-                    console.log(error.message)
-                })
+				if (validCards.length === 0) {
+					console.log('There are no valid cards to upload from ', fileName)
+					return
+				}
+				if (await confirmUpload(validCards.length, invalidCards.length)) {
+					addDeckToDatabase(validCards)
+				} else {
+					quit()
+				}
+				//Do you want to proceed and upload the {number} valid cards or quit the program?
 			})
 	}
 
-    const checkEmptyProperties = (obj) => {
-        let emptyProperties = false
-        //Check if there are not exactly 6 properties on the object (word to guess + 5 words to avoid)
-        if (Object.keys(obj).length !== 6) {
-            emptyProperties = true
-        } else {
-           emptyProperties =  Object.keys(obj).some(key => obj[key] === "" || obj[key] === "undefined" || obj[key] === null)
-        }
-        return emptyProperties
-    }
+	const checkEmptyProperties = (obj) => {
+		let emptyProperties = false
+		//Check if there are not exactly 6 properties on the object (word to guess + 5 words to avoid)
+		if (Object.keys(obj).length !== 6) {
+			emptyProperties = true
+		} else {
+			emptyProperties = Object.keys(obj).some(
+				(key) => obj[key] === '' || obj[key] === 'undefined' || obj[key] === null
+			)
+		}
+		return emptyProperties
+	}
+
+	const confirmUpload = (validCardCount, invalidCardCount) => {
+		return inquirer
+			.prompt([
+				{
+					name: 'continueUpload',
+					type: 'list',
+					choices: [
+						{ name: 'proceed', value: true },
+						{ name: 'cancel upload', value: false },
+					],
+					message: `There are ${invalidCardCount} invalid cards. Proceed to upload the ${validCardCount} valid cards?`,
+				},
+			])
+			.then((answers) => {
+				return answers.continueUpload
+			})
+			.catch((error) => {
+				console.log(error.message)
+			})
+	}
+
+	const addDeckToDatabase = (cardsToUpload) => {
+		console.log('\nComparing existing cards...\n')
+		const duplicateCards = []
+		let filteredCardsToUpload
+		//get entire cards collection, if it exists
+		firebase
+			.firestore()
+			.collection('cards')
+			.get()
+			.then((deckSnapshot) => {
+				console.log('check if there are duplicates\n')
+				deckSnapshot.forEach((card, index) => {
+					const cardData = card.data()
+
+                    //card.id is the tabooWord. cardDate is the tabooList array
+					if (checkForDuplicates(card.id, cardsToUpload)) {
+						duplicateCards.push(card.id)
+					}
+				})
+
+                console.log("duplicates array")
+                console.log(duplicateCards)
+                process.exit(0)
+				//There are duplicates. Determine if should override existing cards
+
+				//Check if deck already exists
+				//No: continue
+				//Yes: Check for duplicates
+				//No duplicates: update deck
+				//Duplicates: inquirer: There are duplicates. Select which of the following you want to override. Any unselected will not be updated.
+				//Remove unselected duplicates from cardsToUpload
+				//Upload remaining cards
+
+				//Log success message
+				//Update 'actions performed' array
+			})
+	}
+
 	/*
     
     Name of file w/ extenstion
@@ -244,6 +285,8 @@ const logCardSuggestions = () => {
 
 const quit = () => {
 	console.log('quit')
+	//log actions completed array to console and file
+	process.exit(0)
 }
 
 const logError = (message, code = 1) => {
@@ -252,4 +295,9 @@ const logError = (message, code = 1) => {
 	console.log('')
 	process.exit(code)
 }
+
+const logActionsCompleted = () => {
+	console.log('logging actions completed')
+}
+
 mainMenu(process.env.NODE_ENV)
