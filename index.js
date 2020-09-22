@@ -127,18 +127,82 @@ const importCardsFromFile = () => {
 				},
 			])
 			.then((answers) => {
-                console.log(answers)
+				console.log(answers)
 				if (answers.fileName === 'notFound') {
 					console.log('Add the csv file to import to the deck folder and try again.')
 					return
 				}
 				console.log('importing ', answers.fileName)
+				readDeckFile(answers.fileName)
 			})
 			.catch((error) => {
 				console.log(error.message)
 			})
 	})
 
+	const readDeckFile = (fileName) => {
+		const validCards = []
+		const invalidCards = []
+		//Create a file stream to read file line by line
+		const stream = fs.createReadStream(path.join(deckDirectory, fileName))
+
+		stream
+			.on('error', (err) => {
+				console.log(err.message)
+				process.exit(1)
+            })
+            //Reads each line and imports as an object with keys as the row 1 column headers.
+			.pipe(csvParser())
+			.on('data', (row) => {
+				//Checks that there are correct number of properties for row (6). If not, pushes to invalid array
+				if (checkEmptyProperties(row)) {
+					invalidCards.push(row)
+				} else {
+					validCards.push(row)
+				}
+			})
+			.on('end', () => {
+				console.log("finished reading files. Valid: ")
+				console.log(validCards.length)
+
+				console.log('invalid: ')
+                console.log(invalidCards)
+
+                //Do you want to proceed and upload the {number} valid cards or quit the program?
+                inquirer
+                .prompt([
+                    {
+                        name: 'continueUpload',
+                        type: 'confirm',
+                        message: 'Do you want to proceed and upload the {number} valid cards?',
+                        default: false
+                    },
+                ])
+                .then((answers) => {
+                    console.log(answers)
+                    if (!answers.continueUpload) {
+                        quit()                     
+                        return
+                    }
+                    console.log('continuing with valid cards')
+         
+                })
+                .catch((error) => {
+                    console.log(error.message)
+                })
+			})
+	}
+
+    const checkEmptyProperties = (obj) => {
+        let emptyProperties = false
+        //Check if there are not exactly 6 properties on the object (word to guess + 5 words to avoid)
+        if (Object.keys(obj).length !== 6) {
+            emptyProperties = true
+        } else {
+           emptyProperties =  Object.keys(obj).some(key => obj[key] === "" || obj[key] === "undefined" || obj[key] === null)
+        }
+        return emptyProperties
+    }
 	/*
     
     Name of file w/ extenstion
