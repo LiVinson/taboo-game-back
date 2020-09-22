@@ -215,35 +215,115 @@ const importCardsFromFile = () => {
 			.firestore()
 			.collection('cards')
 			.get()
-			.then((deckSnapshot) => {
-				console.log('check if there are duplicates\n')
+			.then(async (deckSnapshot) => {
 				deckSnapshot.forEach((card, index) => {
-					const cardData = card.data()
+					// const cardData = card.data()
 
-                    //card.id is the tabooWord. cardDate is the tabooList array
+					//card.id is the tabooWord. cardDate is the tabooList array
 					if (checkForDuplicates(card.id, cardsToUpload)) {
 						duplicateCards.push(card.id)
 					}
 				})
 
-                console.log("duplicates array")
-                console.log(duplicateCards)
-                process.exit(0)
 				//There are duplicates. Determine if should override existing cards
+				if (duplicateCards.length > 0) {
+					//array containing list of duplicate cards that should be overrided
+					const duplicatesNotToOverride = await confirmDuplicateOverride(duplicateCards)
 
-				//Check if deck already exists
-				//No: continue
-				//Yes: Check for duplicates
-				//No duplicates: update deck
-				//Duplicates: inquirer: There are duplicates. Select which of the following you want to override. Any unselected will not be updated.
-				//Remove unselected duplicates from cardsToUpload
-				//Upload remaining cards
+					//Don't override all duplicates, need to filter out cards listed in duplicatesNotToOverride from  cardsToUpload
+					if (duplicatesNotToOverride.length > 0) {
+						// 	//Updated cardsToUpload to remove any duplicates that are not in the  confirmedDuplicatesToOverride array
+						filteredCardsToUpload = cardsToUpload.filter((card) => {
+							//if card is  in do not duplicate list, filter it out
+							return !duplicatesNotToOverride.includes(card.tabooWord)
+						})
+					}
+				} else {
+					console.log('NO duplicates detected.\n')
+					// no duplicates
+					filteredCardsToUpload = cardsToUpload
+				}
 
-				//Log success message
-				//Update 'actions performed' array
+				console.log(`Batch adding ${filteredCardsToUpload.length}...`)
+				const formattedCardsToUpload = filteredCardsToUpload.map((card) => {
+					const tabooList = [card.word1, card.word2, card.word3, card.word4, card.word5]
+					return {
+						tabooWord: card.tabooWord,
+						tabooList: tabooList,
+					}
+				})
+				console.log(formattedCardsToUpload[0])
+
+				const batch = firebase.firestore().batch()
+
+				formattedCardsToUpload.forEach((card) => {
+					const cardRef = firebase.firestore().collection('cards').doc(card.tabooWord)
+					batch.set(cardRef, { tabooList: [...card.tabooList] })
+				})
+
+				batch
+					.commit()
+					.then(() => {
+                        console.log(`Added or updated ${formattedCardsToUpload.length} cards!\n`)
+                        mainMenu()
+					})
+					.catch((error) => {
+						console.log('error on batch update')
+						console.log(error)
+					})
+
+		
 			})
+			.catch((error) => {
+				console.log(error.message)
+			})
+
+		//Check if deck already exists
+		//No: continue
+		//Yes: Check for duplicates
+
+		//No duplicates: update deck
+		//Duplicates: inquirer: There are duplicates. Select which of the following you want to override. Any unselected will not be updated.
+		//Remove unselected duplicates from cardsToUpload
+		//Upload remaining cards
+
+		//Log success message
+		//Update 'actions performed' array
+	}
+	//returns true if existing word is included in the array of cards to be uploaded
+	const checkForDuplicates = (existingWord, cardsToUpload) => {
+		return cardsToUpload.some((newCard) => existingWord === newCard.tabooWord)
 	}
 
+	const confirmDuplicateOverride = (duplicatesList) => {
+		console.log('Duplicates Detected!\n')
+
+		const formattedDuplicates = duplicatesList.map((word, index) => {
+			const updatedCard = {
+				name: `${index + 1}. ${word}`,
+				value: word,
+			}
+			return updatedCard
+		})
+
+		return inquirer
+			.prompt([
+				{
+					type: 'checkbox',
+					name: 'dontOverrideList',
+					message: `\n${duplicatesList.length} cards to be uploaded already exist in the database. Select the cards you DO NOT wish to override.`,
+					choices: formattedDuplicates,
+				},
+			])
+			.then((answers) => {
+				console.log(answers.dontOverrideList)
+				return answers.dontOverrideList
+			})
+			.catch((error) => {
+				console.log(error.message)
+				process.exit(1)
+			})
+	}
 	/*
     
     Name of file w/ extenstion
