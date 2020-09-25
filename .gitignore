@@ -21,6 +21,7 @@
 
 /docs
 /deck
+/keys
 
 npm-debug.log*
 yarn-debug.log*

@@ -3,27 +3,28 @@ const csvParser = require('csv-parser')
 const fs = require('fs')
 const path = require('path')
 const inquirer = require('inquirer')
-//---------Firebase configuration--------------
-const firebase = require('firebase/app')
-require('firebase/firestore')
-require('firebase/analytics')
-const fbConfig = require('./config/fbConfig')
-// Initialize Firebase
-firebase.initializeApp(fbConfig)
 
-//Initialize firestore
-firebase.firestore()
+//------------------Admin access to override any set rules in firestore ----------------//
+const admin = require('firebase-admin')
+const serviceAccount = require(process.env.KEY_PATH)
+//initialize admin SDK using serviceAccountKey
+admin.initializeApp({
+	credential: admin.credential.cert(serviceAccount),
+})
 
 //-------------Globals -----------------
-
+const db = admin.firestore()
 const deckDirectory = path.join(__dirname, 'deck')
+
+/* ------------ Inquirer Prompts ------------ */
+//Options for deck updates
 const mainMenu = () => {
 	inquirer
 		.prompt([
 			{
 				type: 'input',
 				name: 'environmentConfirm',
-				message: `PLEASE READ: All changes made will impact the ${process.env.NODE_ENV.toUpperCase()} database. To show you understand and intend to update the ${process.env.NODE_ENV.toUpperCase()} database, please type '${
+				message: `PLEASE READ:\nAll changes made will impact the ${process.env.NODE_ENV.toUpperCase()} database. To show you understand and intend to update the ${process.env.NODE_ENV.toUpperCase()} database, please type '${
 					process.env.NODE_ENV
 				}' and press enter.`,
 				validate: (input) => {
@@ -105,6 +106,25 @@ const mainMenu = () => {
 		})
 }
 
+const additionalActions = () => {
+	inquirer
+		.prompt([
+			{
+				name: 'continue',
+				message: 'Perform additional actions?',
+				type: 'list',
+				choices: ['yes', 'no'],
+			},
+		])
+		.then((response) => {
+			if (response.continue === 'yes') {
+				mainMenu(process.env.NODE_ENV)
+			} else {
+				quit()
+			}
+		})
+}
+
 const importCardsFromFile = () => {
 	fs.readdir(deckDirectory, (err, files) => {
 		if (err) {
@@ -157,7 +177,7 @@ const importCardsFromFile = () => {
 				}
 			})
 			.on('end', async () => {
-				console.log(`Finished reading ${fileName}`)
+				console.log(`Finished reading ${fileName}\n`)
 
 				if (validCards.length === 0) {
 					console.log('There are no valid cards to upload from ', fileName)
@@ -172,9 +192,9 @@ const importCardsFromFile = () => {
 			})
 	}
 
+	//Used to make sure objects created from csv all have 6 properties (word to guess + 5 words on tabooList) and none are empty
 	const checkEmptyProperties = (obj) => {
 		let emptyProperties = false
-		//Check if there are not exactly 6 properties on the object (word to guess + 5 words to avoid)
 		if (Object.keys(obj).length !== 6) {
 			emptyProperties = true
 		} else {
@@ -185,6 +205,7 @@ const importCardsFromFile = () => {
 		return emptyProperties
 	}
 
+	//Used to confirm upload based on number of valid and invalid records read from csv
 	const confirmUpload = (validCardCount, invalidCardCount) => {
 		return inquirer
 			.prompt([
@@ -195,7 +216,7 @@ const importCardsFromFile = () => {
 						{ name: 'proceed', value: true },
 						{ name: 'cancel upload', value: false },
 					],
-					message: `There are ${invalidCardCount} invalid cards. Proceed to upload the ${validCardCount} valid cards?`,
+					message: `There are ${invalidCardCount} invalid cards. Proceed to upload the ${validCardCount} valid cards?\n`,
 				},
 			])
 			.then((answers) => {
@@ -206,20 +227,19 @@ const importCardsFromFile = () => {
 			})
 	}
 
+	//Reads existing deck to check for duplicates, confirm which duplicates to override before writing new cards
 	const addDeckToDatabase = (cardsToUpload) => {
 		console.log('\nComparing existing cards...\n')
 		const duplicateCards = []
 		let filteredCardsToUpload
 		//get entire cards collection, if it exists
-		firebase
-			.firestore()
-			.collection('cards')
+		db.collection('cards')
 			.get()
 			.then(async (deckSnapshot) => {
 				deckSnapshot.forEach((card, index) => {
 					// const cardData = card.data()
 
-					//card.id is the tabooWord. cardDate is the tabooList array
+					//card.id is the tabooWord. Compares each existing card to see if there are duplicates with new list to upload
 					if (checkForDuplicates(card.id, cardsToUpload)) {
 						duplicateCards.push(card.id)
 					}
@@ -229,22 +249,27 @@ const importCardsFromFile = () => {
 				if (duplicateCards.length > 0) {
 					//array containing list of duplicate cards that should be overrided
 					const duplicatesNotToOverride = await confirmDuplicateOverride(duplicateCards)
-
+					console.log(duplicatesNotToOverride)
+					console.log(duplicatesNotToOverride.length)
 					//Don't override all duplicates, need to filter out cards listed in duplicatesNotToOverride from  cardsToUpload
 					if (duplicatesNotToOverride.length > 0) {
 						// 	//Updated cardsToUpload to remove any duplicates that are not in the  confirmedDuplicatesToOverride array
 						filteredCardsToUpload = cardsToUpload.filter((card) => {
-							//if card is  in do not duplicate list, filter it out
+							//if card is  in do not duplicate list, filter it out so it is not uploaded
 							return !duplicatesNotToOverride.includes(card.tabooWord)
 						})
+					} else {
+						//override all
+						filteredCardsToUpload = cardsToUpload
 					}
 				} else {
-					console.log('NO duplicates detected.\n')
+					//No duplicates, so upload the full list from the csv
+					console.log('No duplicates detected.\n')
 					// no duplicates
 					filteredCardsToUpload = cardsToUpload
 				}
 
-				console.log(`Batch adding ${filteredCardsToUpload.length}...`)
+				console.log(`Batch adding ${filteredCardsToUpload.length} card(s)...`)
 				const formattedCardsToUpload = filteredCardsToUpload.map((card) => {
 					const tabooList = [card.word1, card.word2, card.word3, card.word4, card.word5]
 					return {
@@ -252,43 +277,28 @@ const importCardsFromFile = () => {
 						tabooList: tabooList,
 					}
 				})
-				console.log(formattedCardsToUpload[0])
 
-				const batch = firebase.firestore().batch()
+				const batch = db.batch()
 
 				formattedCardsToUpload.forEach((card) => {
-					const cardRef = firebase.firestore().collection('cards').doc(card.tabooWord)
+					const cardRef = db.collection('cards').doc(card.tabooWord)
 					batch.set(cardRef, { tabooList: [...card.tabooList] })
 				})
 
 				batch
 					.commit()
 					.then(() => {
-                        console.log(`Added or updated ${formattedCardsToUpload.length} cards!\n`)
-                        mainMenu()
+						console.log(`\nDone! Added or updated ${formattedCardsToUpload.length} cards!\n`)
+						additionalActions()
 					})
 					.catch((error) => {
 						console.log('error on batch update')
 						console.log(error)
 					})
-
-		
 			})
 			.catch((error) => {
 				console.log(error.message)
 			})
-
-		//Check if deck already exists
-		//No: continue
-		//Yes: Check for duplicates
-
-		//No duplicates: update deck
-		//Duplicates: inquirer: There are duplicates. Select which of the following you want to override. Any unselected will not be updated.
-		//Remove unselected duplicates from cardsToUpload
-		//Upload remaining cards
-
-		//Log success message
-		//Update 'actions performed' array
 	}
 	//returns true if existing word is included in the array of cards to be uploaded
 	const checkForDuplicates = (existingWord, cardsToUpload) => {
@@ -297,7 +307,6 @@ const importCardsFromFile = () => {
 
 	const confirmDuplicateOverride = (duplicatesList) => {
 		console.log('Duplicates Detected!\n')
-
 		const formattedDuplicates = duplicatesList.map((word, index) => {
 			const updatedCard = {
 				name: `${index + 1}. ${word}`,
@@ -311,12 +320,11 @@ const importCardsFromFile = () => {
 				{
 					type: 'checkbox',
 					name: 'dontOverrideList',
-					message: `\n${duplicatesList.length} cards to be uploaded already exist in the database. Select the cards you DO NOT wish to override.`,
+					message: `\n${duplicatesList.length} card(s) to be uploaded already exist in the database. Select the cards you DO NOT wish to override or press enter to override all cards listed.`,
 					choices: formattedDuplicates,
 				},
 			])
 			.then((answers) => {
-				console.log(answers.dontOverrideList)
 				return answers.dontOverrideList
 			})
 			.catch((error) => {
@@ -324,23 +332,6 @@ const importCardsFromFile = () => {
 				process.exit(1)
 			})
 	}
-	/*
-    
-    Name of file w/ extenstion
-    Check that file exists with valid extension
-    Log: File exists. Reading contents
-    //Reading complete.
-    //Number of valid and invalid cards
-    //Review list of valid or invalid before import?
-    //Import cards
-    //Success message. New number of cards.
-    //Update 'actionsPerformed' array?
-    //What would you like to do
-    //Quit
-    //Log actions performed 
-    
-
-*/
 }
 
 const updateExistingCard = () => {
