@@ -170,20 +170,19 @@ const importCardsFromFile = () => {
 			.pipe(csvParser())
 			.on('data', (row) => {
 				//Checks that there are correct number of properties for row (6). If not, pushes to invalid array
-				if (checkEmptyProperties(row)) {
-					invalidCards.push(row)
+				if (checkEmptyProperties(row)) {			
+					invalidCards.push(row["0"])
 				} else {
 					validCards.push(row)
 				}
 			})
 			.on('end', async () => {
 				console.log(`Finished reading ${fileName}\n`)
-
 				if (validCards.length === 0) {
 					console.log('There are no valid cards to upload from ', fileName)
 					return
 				}
-				if (await confirmUpload(validCards.length, invalidCards.length)) {
+				if (await confirmUpload(validCards.length, invalidCards)) {
 					addDeckToDatabase(validCards)
 				} else {
 					quit()
@@ -206,7 +205,7 @@ const importCardsFromFile = () => {
 	}
 
 	//Used to confirm upload based on number of valid and invalid records read from csv
-	const confirmUpload = (validCardCount, invalidCardCount) => {
+	const confirmUpload = (validCardCount, invalidCards) => {
 		return inquirer
 			.prompt([
 				{
@@ -216,7 +215,7 @@ const importCardsFromFile = () => {
 						{ name: 'proceed', value: true },
 						{ name: 'cancel upload', value: false },
 					],
-					message: `There are ${invalidCardCount} invalid cards. Proceed to upload the ${validCardCount} valid cards?\n`,
+					message: `There are ${invalidCards.length} invalid card(s):\n ${JSON.stringify(invalidCards)}\nProceed to upload the ${validCardCount} valid cards?\n`,
 				},
 			])
 			.then((answers) => {
