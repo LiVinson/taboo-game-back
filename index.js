@@ -63,8 +63,8 @@ const mainMenu = () => {
 						value: 'logExisting',
 					},
 					{
-						name: 'Print list of card suggestions',
-						value: 'logSuggestions',
+						name: 'Retrieve suggestion submissions',
+						value: 'retrieveSuggestions',
 					},
 					{
 						name: 'Quit',
@@ -90,8 +90,8 @@ const mainMenu = () => {
 				case 'logExisting':
 					logExistingCards()
 					return
-				case 'logSuggestions':
-					logCardSuggestions()
+				case 'retrieveSuggestions':
+					determineSuggestionType()
 					return
 				case 'quit':
 					quit()
@@ -170,8 +170,8 @@ const importCardsFromFile = () => {
 			.pipe(csvParser())
 			.on('data', (row) => {
 				//Checks that there are correct number of properties for row (6). If not, pushes to invalid array
-				if (checkEmptyProperties(row)) {			
-					invalidCards.push(row["0"])
+				if (checkEmptyProperties(row)) {
+					invalidCards.push(row['0'])
 				} else {
 					validCards.push(row)
 				}
@@ -215,7 +215,9 @@ const importCardsFromFile = () => {
 						{ name: 'proceed', value: true },
 						{ name: 'cancel upload', value: false },
 					],
-					message: `There are ${invalidCards.length} invalid card(s):\n ${JSON.stringify(invalidCards)}\nProceed to upload the ${validCardCount} valid cards?\n`,
+					message: `There are ${invalidCards.length} invalid card(s):\n ${JSON.stringify(
+						invalidCards
+					)}\nProceed to upload the ${validCardCount} valid cards?\n`,
 				},
 			])
 			.then((answers) => {
@@ -349,10 +351,117 @@ const logExistingCards = () => {
 	console.log('log existing cards')
 }
 
-const logCardSuggestions = () => {
-	console.log('log card suggestions')
+const determineSuggestionType = () => {
+	console.log('determine suggestion type')
+	inquirer
+		.prompt([
+			{
+				type: 'list',
+				name: 'Which suggestions would you like to retrieve?',
+				choices: [
+					{
+						name: 'new suggestions',
+						value: false,
+					},
+					{
+						name: 'all suggestions',
+						value: true,
+					},
+				],
+			},
+		])
+		.then((suggestionType) => {
+			logSuggestionByType(suggestionType)
+		})
 }
 
+const logSuggestionByType = (getAllSuggestions) => {
+	const dbQuery = getAllSuggestions
+		? db.collection('suggestions')
+		: db.collection('suggestions').where('reviewed', '==', false)
+
+	dbQuery
+		.get()
+		.orderBy('createdAt', 'tabooWord')
+		.then((suggestionsSnapshot) => {
+			const suggestions = []
+			suggestionsSnapshot.forEach((suggestion) => {
+				console.log(doc.data().tabooWord)
+				const suggestion = doc.data()
+				suggestions.push(
+					Object.create({}, { tabooWord: suggestion.tabooWord, tabooList: suggestion.tabooList })
+				)
+			})
+
+			if (suggestions.length > 0) {
+
+						determineSuggestionAction(suggestions)
+			} else {
+				console.log("There were no suggestions to retrieve that meet the specifications\n")
+				mainMenu()
+				
+			}
+			
+		})
+}
+
+const determineSuggestionAction =  (suggestionList) => {
+	  inquirer
+		.prompt([
+			{
+				type: 'list',
+				name: `${suggestionList.length} card(s) were retrieved. What action would you like to take?`,
+				choices: [
+					{
+						name: 'Print all suggestions to the terminal',
+						value: 'printAll',
+					},
+					{ name: `Add suggestions to existing csv file`, value: 'updateExistingCsv' },
+					{ name: `Add suggestions to new csv file`, value: 'addNewCsv' },
+					{ name: `Return to main menu`, value: 'mainMenu' },
+					{ name: `Quit with no additional actions`, value: 'quit' },
+				],
+			},
+		])
+		.then((suggestionAction) => {
+			switch (suggestionAction) {
+				case 'printAll':
+					printAllSuggestions(suggestionList)
+					break
+				case 'updateExistingCsv':
+					chooseCsvForUpdate(suggestionList)
+					break
+				case 'addNewCsv':
+					addToNewCsv(suggestionList)
+					break
+				case 'mainMenu':
+					mainMenu()
+				case 'quit':
+					quit()
+				default:
+			}
+		})
+}
+
+const printAllSuggestions = (suggestionList) => {
+	console.log("print all suggestions")
+
+}
+
+const chooseCsvForUpdate = (suggestionList) => {
+	console.log("choose csv for update")
+
+
+}
+
+addToNewCsv = (suggestionList) => {
+	console.log("add to new csv")
+}
+
+const updateEx
+
+
+const listExistin
 const quit = () => {
 	console.log('quit')
 	//log actions completed array to console and file
