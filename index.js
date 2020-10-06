@@ -15,6 +15,7 @@ admin.initializeApp({
 //-------------Globals -----------------
 const db = admin.firestore()
 const deckDirectory = path.join(__dirname, 'deck')
+const completedActions = []
 
 /* ------------ Inquirer Prompts ------------ */
 //Options for deck updates
@@ -458,10 +459,22 @@ const printAllSuggestions = (suggestionList) => {
 
 const chooseCsvForUpdate = (suggestionList) => {
 	console.log('choose csv for update')
+	//Read all csv files in deck folder.
+	//Put in array
+	//inquirer.prompt to choose from multiple choice + cancel
+	//Call addCardsToCsv with formatted data
 }
 
 addToNewCsv = (suggestionList) => {
 	console.log('add to new csv')
+}
+
+const addCardsToCsv = (cardsToAdd, csvFileName) => {
+	console.log(cardsToAdd)
+
+	//Confirm update cards to csv
+	//If yes, append to end of file
+	//Confirmation message, main menu
 }
 
 const quit = () => {
