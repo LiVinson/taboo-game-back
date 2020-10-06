@@ -15,22 +15,21 @@ admin.initializeApp({
 //-------------Globals -----------------
 const db = admin.firestore()
 const deckDirectory = path.join(__dirname, 'deck')
+const completedActions = []
 
 /* ------------ Inquirer Prompts ------------ */
 //Options for deck updates
-const mainMenu = () => {
+const mainMenu = (environment) => {
 	inquirer
 		.prompt([
 			{
 				type: 'input',
 				name: 'environmentConfirm',
-				message: `PLEASE READ:\nAll changes made will impact the ${process.env.NODE_ENV.toUpperCase()} database. To show you understand and intend to update the ${process.env.NODE_ENV.toUpperCase()} database, please type '${
-					process.env.NODE_ENV
-				}' and press enter.`,
+				message: `PLEASE READ:\nAll changes made will impact the ${environment.toUpperCase()} database. To show you understand and intend to update the ${environment.toUpperCase()} database, please type '${environment}' and press enter.`,
 				validate: (input) => {
 					if (input.length === 0) {
 						return "Type the environment name to proceed, or press 'Ctrl + C' to end the script"
-					} else if (input !== process.env.NODE_ENV) {
+					} else if (input !== environment) {
 						return "Input does not match environment name. Please type the exact environment name, or press 'Ctrl + C' to end the script with no changes made."
 					} else {
 						return true
@@ -63,8 +62,8 @@ const mainMenu = () => {
 						value: 'logExisting',
 					},
 					{
-						name: 'Print list of card suggestions',
-						value: 'logSuggestions',
+						name: 'Retrieve suggestion submissions',
+						value: 'retrieveSuggestions',
 					},
 					{
 						name: 'Quit',
@@ -90,8 +89,8 @@ const mainMenu = () => {
 				case 'logExisting':
 					logExistingCards()
 					return
-				case 'logSuggestions':
-					logCardSuggestions()
+				case 'retrieveSuggestions':
+					determineSuggestionType()
 					return
 				case 'quit':
 					quit()
@@ -170,8 +169,8 @@ const importCardsFromFile = () => {
 			.pipe(csvParser())
 			.on('data', (row) => {
 				//Checks that there are correct number of properties for row (6). If not, pushes to invalid array
-				if (checkEmptyProperties(row)) {			
-					invalidCards.push(row["0"])
+				if (checkEmptyProperties(row)) {
+					invalidCards.push(row['0'])
 				} else {
 					validCards.push(row)
 				}
@@ -215,7 +214,9 @@ const importCardsFromFile = () => {
 						{ name: 'proceed', value: true },
 						{ name: 'cancel upload', value: false },
 					],
-					message: `There are ${invalidCards.length} invalid card(s):\n ${JSON.stringify(invalidCards)}\nProceed to upload the ${validCardCount} valid cards?\n`,
+					message: `There are ${invalidCards.length} invalid card(s):\n ${JSON.stringify(
+						invalidCards
+					)}\nProceed to upload the ${validCardCount} valid cards?\n`,
 				},
 			])
 			.then((answers) => {
@@ -349,8 +350,131 @@ const logExistingCards = () => {
 	console.log('log existing cards')
 }
 
-const logCardSuggestions = () => {
-	console.log('log card suggestions')
+const determineSuggestionType = () => {
+	inquirer
+		.prompt([
+			{
+				type: 'list',
+				message: 'Which suggestions would you like to retrieve?',
+				name: 'suggestionType',
+				choices: [
+					{
+						name: 'new suggestions',
+						value: false,
+					},
+					{
+						name: 'all suggestions',
+						value: true,
+					},
+				],
+			},
+		])
+		.then((response) => {
+			logSuggestionByType(response.suggestionType)
+		})
+}
+
+const logSuggestionByType = (getAllSuggestions) => {
+	console.log('get all suggestions?: ', getAllSuggestions)
+	const dbQuery = getAllSuggestions
+		? db.collection('suggestions')
+		: db.collection('suggestions').where('reviewed', '==', false)
+
+	dbQuery
+		.get()
+		.then((suggestionsSnapshot) => {
+			const suggestions = []
+			suggestionsSnapshot.forEach((suggestionSnapshot) => {
+				const suggestion = suggestionSnapshot.data()
+				suggestions.push({
+					tabooWord: suggestion.tabooWord,
+					tabooList: suggestion.tabooList,
+				})
+			})
+
+			if (suggestions.length > 0) {
+				determineSuggestionAction(suggestions)
+			} else {
+				console.log('There were no suggestions to retrieve that meet the specifications\n')
+				mainMenu(process.env.NODE_ENV)
+			}
+		})
+		.catch((err) => {
+			console.log(err.message)
+		})
+}
+
+const determineSuggestionAction = (suggestionList) => {
+	inquirer
+		.prompt([
+			{
+				type: 'list',
+				name: 'suggestionAction',
+				message: `${suggestionList.length} suggested card(s) were retrieved. What action would you like to take?`,
+				choices: [
+					{
+						name: 'Print all suggestions to the terminal',
+						value: 'printAll',
+					},
+					{ name: `Add suggestions to existing csv file`, value: 'updateExistingCsv' },
+					{ name: `Add suggestions to new csv file`, value: 'addNewCsv' },
+					{ name: 'Update status to reviewed = true', value: 'updateReview' },
+					{ name: `Return to main menu`, value: 'mainMenu' },
+					{ name: `Quit with no additional actions`, value: 'quit' },
+				],
+			},
+		])
+		.then((response) => {
+			switch (response.suggestionAction) {
+				case 'printAll':
+					printAllSuggestions(suggestionList)
+					break
+				case 'updateExistingCsv':
+					chooseCsvForUpdate(suggestionList)
+					break
+				case 'addNewCsv':
+					addToNewCsv(suggestionList)
+					break
+				case 'updateReview':
+					updateReview(suggestionList)
+					break
+				case 'mainMenu':
+					mainMenu(process.env.NODE_ENV)
+					break
+				case 'quit':
+					quit()
+				default:
+			}
+		})
+}
+
+const printAllSuggestions = (suggestionList) => {
+	console.log('print all')
+	console.table(suggestionList)
+
+	setTimeout(() => {
+		determineSuggestionAction(suggestionList)
+	}, 1500)
+}
+
+const chooseCsvForUpdate = (suggestionList) => {
+	console.log('choose csv for update')
+	//Read all csv files in deck folder.
+	//Put in array
+	//inquirer.prompt to choose from multiple choice + cancel
+	//Call addCardsToCsv with formatted data
+}
+
+addToNewCsv = (suggestionList) => {
+	console.log('add to new csv')
+}
+
+const addCardsToCsv = (cardsToAdd, csvFileName) => {
+	console.log(cardsToAdd)
+
+	//Confirm update cards to csv
+	//If yes, append to end of file
+	//Confirmation message, main menu
 }
 
 const quit = () => {
