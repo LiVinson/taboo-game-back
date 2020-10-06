@@ -18,19 +18,17 @@ const deckDirectory = path.join(__dirname, 'deck')
 
 /* ------------ Inquirer Prompts ------------ */
 //Options for deck updates
-const mainMenu = () => {
+const mainMenu = (environment) => {
 	inquirer
 		.prompt([
 			{
 				type: 'input',
 				name: 'environmentConfirm',
-				message: `PLEASE READ:\nAll changes made will impact the ${process.env.NODE_ENV.toUpperCase()} database. To show you understand and intend to update the ${process.env.NODE_ENV.toUpperCase()} database, please type '${
-					process.env.NODE_ENV
-				}' and press enter.`,
+				message: `PLEASE READ:\nAll changes made will impact the ${environment.toUpperCase()} database. To show you understand and intend to update the ${environment.toUpperCase()} database, please type '${environment}' and press enter.`,
 				validate: (input) => {
 					if (input.length === 0) {
 						return "Type the environment name to proceed, or press 'Ctrl + C' to end the script"
-					} else if (input !== process.env.NODE_ENV) {
+					} else if (input !== environment) {
 						return "Input does not match environment name. Please type the exact environment name, or press 'Ctrl + C' to end the script with no changes made."
 					} else {
 						return true
@@ -352,12 +350,12 @@ const logExistingCards = () => {
 }
 
 const determineSuggestionType = () => {
-	console.log('determine suggestion type')
 	inquirer
 		.prompt([
 			{
 				type: 'list',
-				name: 'Which suggestions would you like to retrieve?',
+				message: 'Which suggestions would you like to retrieve?',
+				name: 'suggestionType',
 				choices: [
 					{
 						name: 'new suggestions',
@@ -370,47 +368,48 @@ const determineSuggestionType = () => {
 				],
 			},
 		])
-		.then((suggestionType) => {
-			logSuggestionByType(suggestionType)
+		.then((response) => {
+			logSuggestionByType(response.suggestionType)
 		})
 }
 
 const logSuggestionByType = (getAllSuggestions) => {
+	console.log('get all suggestions?: ', getAllSuggestions)
 	const dbQuery = getAllSuggestions
 		? db.collection('suggestions')
 		: db.collection('suggestions').where('reviewed', '==', false)
 
 	dbQuery
 		.get()
-		.orderBy('createdAt', 'tabooWord')
 		.then((suggestionsSnapshot) => {
 			const suggestions = []
-			suggestionsSnapshot.forEach((suggestion) => {
-				console.log(doc.data().tabooWord)
-				const suggestion = doc.data()
-				suggestions.push(
-					Object.create({}, { tabooWord: suggestion.tabooWord, tabooList: suggestion.tabooList })
-				)
+			suggestionsSnapshot.forEach((suggestionSnapshot) => {
+				const suggestion = suggestionSnapshot.data()
+				suggestions.push({
+					tabooWord: suggestion.tabooWord,
+					tabooList: suggestion.tabooList,
+				})
 			})
 
 			if (suggestions.length > 0) {
-
-						determineSuggestionAction(suggestions)
+				determineSuggestionAction(suggestions)
 			} else {
-				console.log("There were no suggestions to retrieve that meet the specifications\n")
-				mainMenu()
-				
+				console.log('There were no suggestions to retrieve that meet the specifications\n')
+				mainMenu(process.env.NODE_ENV)
 			}
-			
+		})
+		.catch((err) => {
+			console.log(err.message)
 		})
 }
 
-const determineSuggestionAction =  (suggestionList) => {
-	  inquirer
+const determineSuggestionAction = (suggestionList) => {
+	inquirer
 		.prompt([
 			{
 				type: 'list',
-				name: `${suggestionList.length} card(s) were retrieved. What action would you like to take?`,
+				name: 'suggestionAction',
+				message: `${suggestionList.length} suggested card(s) were retrieved. What action would you like to take?`,
 				choices: [
 					{
 						name: 'Print all suggestions to the terminal',
@@ -418,13 +417,14 @@ const determineSuggestionAction =  (suggestionList) => {
 					},
 					{ name: `Add suggestions to existing csv file`, value: 'updateExistingCsv' },
 					{ name: `Add suggestions to new csv file`, value: 'addNewCsv' },
+					{ name: 'Update status to reviewed = true', value: 'updateReview' },
 					{ name: `Return to main menu`, value: 'mainMenu' },
 					{ name: `Quit with no additional actions`, value: 'quit' },
 				],
 			},
 		])
-		.then((suggestionAction) => {
-			switch (suggestionAction) {
+		.then((response) => {
+			switch (response.suggestionAction) {
 				case 'printAll':
 					printAllSuggestions(suggestionList)
 					break
@@ -434,8 +434,12 @@ const determineSuggestionAction =  (suggestionList) => {
 				case 'addNewCsv':
 					addToNewCsv(suggestionList)
 					break
+				case 'updateReview':
+					updateReview(suggestionList)
+					break
 				case 'mainMenu':
-					mainMenu()
+					mainMenu(process.env.NODE_ENV)
+					break
 				case 'quit':
 					quit()
 				default:
@@ -444,24 +448,22 @@ const determineSuggestionAction =  (suggestionList) => {
 }
 
 const printAllSuggestions = (suggestionList) => {
-	console.log("print all suggestions")
+	console.log('print all')
+	console.table(suggestionList)
 
+	setTimeout(() => {
+		determineSuggestionAction(suggestionList)
+	}, 1500)
 }
 
 const chooseCsvForUpdate = (suggestionList) => {
-	console.log("choose csv for update")
-
-
+	console.log('choose csv for update')
 }
 
 addToNewCsv = (suggestionList) => {
-	console.log("add to new csv")
+	console.log('add to new csv')
 }
 
-const updateEx
-
-
-const listExistin
 const quit = () => {
 	console.log('quit')
 	//log actions completed array to console and file
